@@ -1,45 +1,132 @@
-#include <iostream>
-#include <glad/glad.h>
-#include <GLFW/glfw3.h>
+#include<filesystem>
+namespace fs = std::filesystem;
 
-int main() {
+#include<iostream>
+#include<glad/glad.h>
+#include<GLFW/glfw3.h>
+#include<stb_image.h>
+#include<glm/glm.hpp>
+#include<glm/gtc/matrix_transform.hpp>
+#include<glm/gtc/type_ptr.hpp>
+#include <vector>
+#include <cmath>
+
+#include"../Header Files/Texture.h"
+#include"../Header Files/shaderClass.h"
+#include"../Header Files/VAO.h"
+#include"../Header Files/VBO.h"
+#include"../Header Files/EBO.h"
+#include"../Header Files/Camera.h"
+
+
+const unsigned int width = 800;
+const unsigned int height = 800;
+
+// Vertices coordinates
+GLfloat vertices[] =
+{ //     COORDINATES     /        COLORS      
+	-0.5f, 0.0f,  0.5f,     0.83f, 0.70f, 0.44f,	
+	-0.5f, 0.0f, -0.5f,     0.83f, 0.70f, 0.44f,	
+	 0.5f, 0.0f, -0.5f,     0.83f, 0.70f, 0.44f,	
+	 0.5f, 0.0f,  0.5f,     0.83f, 0.70f, 0.44f,	
+	 0.0f, 0.8f,  0.0f,     0.92f, 0.86f, 0.76f
+};
+
+// Indices for vertices order
+GLuint indices[] =
+{
+	0, 1, 2,
+	0, 2, 3,
+	0, 1, 4,
+	1, 2, 4,
+	2, 3, 4,
+	3, 0, 4
+};
+
+
+int main()
+{
 	glfwInit();
 
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
 	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-	GLFWwindow* window = glfwCreateWindow(800, 800, "grav-sim", NULL, NULL);
-	if (window == NULL) {
-		std::cout << "window formation failed" << std::endl;
+	GLFWwindow* window = glfwCreateWindow(width, height, "grav", NULL, NULL);
+	// Error check if the window fails to create
+	if (window == NULL)
+	{
+		std::cout << "Failed to create GLFW window" << std::endl;
 		glfwTerminate();
 		return -1;
 	}
-
 	glfwMakeContextCurrent(window);
 
-	//Loading colors
+	//Load GLAD so it configures OpenGL
 	gladLoadGL();
+	glViewport(0, 0, width, height);
+
+	// Generates Shader object using shaders default.vert and default.frag
+	Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
+
+	// Generates Vertex Array Object and binds it
+	VAO VAO1;
+	VAO1.Bind();
+
+	// Generates Vertex Buffer Object and links it to vertices
+	VBO VBO1(vertices, sizeof(vertices));
+	// Generates Element Buffer Object and links it to indices
+	EBO EBO1(indices, sizeof(indices));
+
+	// Links VBO attributes such as coordinates and colors to VAO
+	VAO1.linkAttrib(VBO1, 0, 3, GL_FLOAT, 6 * sizeof(float), (void*)0);
+	VAO1.linkAttrib(VBO1, 1, 3, GL_FLOAT, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+	//VAO1.linkAttrib(VBO1, 2, 2, GL_FLOAT, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	// Unbind all to prevent accidentally modifying them
+	VAO1.Unbind();
+	VBO1.Unbind();
+	EBO1.Unbind();
 
 
+	// Texture
+	//Texture brickTex("Textures/brick.png", GL_TEXTURE_2D, GL_TEXTURE0, GL_RGB, GL_UNSIGNED_BYTE);
+	//brickTex.texUnit(shaderProgram, "tex0", 0);
 
-	//Informing openGL on the viewport of our window
-	glViewport(0, 0, 800, 800);  //bottom left to top right
+	// Enables the Depth Buffer
+	glEnable(GL_DEPTH_TEST);
 
-	//glfunction to clear the current buffer and replace with a desired color
-	glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+	// Creates camera object
+	Camera camera(width, height, glm::vec3(0.0f, 0.0f, 2.0f));
 
-	//We then want to execute this color change onto our buffer, and do so by clearing the color buffer bit
-	glClear(GL_COLOR_BUFFER_BIT);
+	// Main while loop
+	while (!glfwWindowShouldClose(window))
+	{
+		glClearColor(0.07f, 0.13f, 0.17f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		shaderProgram.Activate();
 
-	//We now swap whatever we've been doing on the background
-	glfwSwapBuffers(window);
+		camera.Inputs(window);
+		// Updates and exports the camera matrix to the Vertex Shader
+		camera.Matrix(45.0f, 0.1f, 100.0f, shaderProgram, "camMatrix");
 
-	while (!glfwWindowShouldClose(window)) {
-
+		// Binds texture so that is appears in rendering
+		//brickTex.Bind();
+		// Bind the VAO so OpenGL knows to use it
+		VAO1.Bind();
+		// Draw primitives, number of indices, datatype of indices, index of indices
+		glDrawElements(GL_TRIANGLES, sizeof(indices) / sizeof(int), GL_UNSIGNED_INT, 0);
+		// Swap the back buffer with the front buffer
+		glfwSwapBuffers(window);
+		// Take care of all GLFW events
 		glfwPollEvents();
 	}
 
+	// Delete all the objects we've created
+	VAO1.Delete();
+	VBO1.Delete();
+	EBO1.Delete();
+	//brickTex.Delete();
+	shaderProgram.Delete();
 	glfwDestroyWindow(window);
 	glfwTerminate();
 	return 0;
