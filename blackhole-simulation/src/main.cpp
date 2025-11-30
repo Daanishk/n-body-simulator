@@ -22,49 +22,82 @@ namespace fs = std::filesystem;
 const unsigned int width = 800;
 const unsigned int height = 800;
 
+const double G = 1.0;
+
 class object {
 public:
     float radius = 0.5f;
     float PI = 3.141592f;
     float cx = 0.0f;
     float cy = 0.0f;
+    float mass;
 
     std::vector<float> vertices;
     glm::vec3 position = { cx, cy, 0.0f };
-    std::vector<float> color = { 1.0f, 0.0f, 0.0f };
+    glm::vec3 color = { 1.0f, 0.0f, 0.0f };
+    glm::vec3 velocity = glm::vec3(0, 0, 0);
 
     // Each object owns its VAO & VBO
     VAO vao;
-    VBO* vbo;   // pointer so we can construct after vertices are generated
+    VBO vbo;  
 
     object()
+        : object(0.5f, glm::vec3(0.0f), glm::vec3(0.0f), glm::vec3(1.0f, 0.0f, 0.0f), 1.0) {
+    }
+
+    object(float radius_, const glm::vec3& pos_, const glm::vec3& vel_, const glm::vec3& color_, float mass_)
+        : radius(radius_), position(pos_), velocity(vel_), color(color_), mass(mass_)
     {
         // 1) build the vertex data on the CPU
         buildSphere();
 
         // 2) create VBO with our vertex data
-        vbo = new VBO(vertices.data(), vertices.size() * sizeof(float));  // :contentReference[oaicite:1]{index=1}
+        vbo.Init(vertices.data(), vertices.size() * sizeof(float));
 
         // 3) set up VAO attribute pointers
         vao.Bind();
-        vao.linkAttrib(*vbo, 0, 3, GL_FLOAT, 6 * sizeof(float), (void*)0);                     // position :contentReference[oaicite:2]{index=2}
-        vao.linkAttrib(*vbo, 1, 3, GL_FLOAT, 6 * sizeof(float), (void*)(3 * sizeof(float)));   // color
+        vao.linkAttrib(vbo, 0, 3, GL_FLOAT, 6 * sizeof(float), (void*)0);                     // position :contentReference[oaicite:2]{index=2}
+        vao.linkAttrib(vbo, 1, 3, GL_FLOAT, 6 * sizeof(float), (void*)(3 * sizeof(float)));   // color
         vao.Unbind();
-        vbo->Unbind();
+        vbo.Unbind();
     }
 
     ~object()
     {
         // clean up GPU resources
         vao.Delete();
-        vbo->Delete();
-        delete vbo;
+        vbo.Delete();
+
     }
 
     void Render() 
     {
         vao.Bind();
         glDrawArrays(GL_TRIANGLES, 0, static_cast<GLint>(vertices.size() / 6));
+    }
+
+    void UpdatePos() {
+        this->position[0] += this->velocity[0] / 94;
+        this->position[1] += this->velocity[1] / 94;
+        this->position[2] += this->velocity[2] / 94;
+    }
+
+    void accelerate(float x, float y, float z) {
+        this->velocity[0] += x / 96;
+        this->velocity[1] += y / 96;
+        this->velocity[2] += z / 96;
+    }
+
+    float collision(object& other) {
+        float dx = this->position[0] - other.position[0];
+        float dy = this->position[1] - other.position[1];
+        float dz = this->position[2] - other.position[2];
+        float distance = sqrt(dx * dx + dy * dy + dz * dz);
+
+        if (distance < this->radius + other.radius) {
+            return -0.2f;
+        }
+        return 1.0f;
     }
 
 private:
@@ -112,7 +145,7 @@ private:
     {
         // pos = x,y,z then color = r,g,b
         vertices.insert(vertices.end(), pos.begin(), pos.end());
-        vertices.insert(vertices.end(), color.begin(), color.end());
+        vertices.insert(vertices.end(), { color.x, color.y, color.z });
     }
 };
 
@@ -138,29 +171,78 @@ int main()
 
     Shader shaderProgram("Shaders/default.vert", "Shaders/default.frag");
     GLint modelLoc = glGetUniformLocation(shaderProgram.ID, "model");
+    GLint lightPosLoc = glGetUniformLocation(shaderProgram.ID, "lightPos");
+    GLint lightColorLoc = glGetUniformLocation(shaderProgram.ID, "lightColor");
+    GLint emissiveLoc = glGetUniformLocation(shaderProgram.ID, "isEmissive");
 
-    // *** HERE: OpenGL is ready, so we can safely create our object ***
-    object o1;
+    std::vector<object> objects;
+    objects.reserve(5);
+
+    //SUN
+    objects.emplace_back(10.0f, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.95f, 0.8f), 3e10);
+
+    //Planet 1 & 2
+    objects.emplace_back(3.0f, glm::vec3( 100.7f, 0.0f, 0.0f), glm::vec3(-9.0f, -9.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 2e9); 
+    objects.emplace_back(3.0f, glm::vec3( -100.7f, 0.0f, 0.0f), glm::vec3(9.0f, 9.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), 2e9); 
+    objects.emplace_back(3.0f, glm::vec3(0.7f, 100.0f, 0.0f), glm::vec3(9.0f, -9.0f, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f), 2e9);
+    objects.emplace_back(3.0f, glm::vec3(-0.7f, -100.0f, 0.0f), glm::vec3(-9.0f, 9.0f, 0.0f), glm::vec3(0.0f, 1.0f, 1.0f), 2e9); 
 
     glEnable(GL_DEPTH_TEST);
 
-    Camera camera(width, height, glm::vec3(0.0f, 0.0f, 2.0f)); 
+    Camera camera(width, height, glm::vec3(0.0f, 0.0f, 100.0f)); 
 
         while (!glfwWindowShouldClose(window))
         {
             glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             shaderProgram.Activate();
+            glm::vec3 sunColor = objects[0].color; 
+            glUniform3fv(lightColorLoc, 1, glm::value_ptr(sunColor));
 
             camera.Inputs(window);
-            camera.Matrix(45.0f, 0.1f, 100.0f, shaderProgram, "camMatrix");
+            camera.Matrix(45.0f, 0.1f, 10000.f, shaderProgram, "camMatrix");
 
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, o1.position);
-            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+            glm::vec3 lightPos = objects[0].position;
+            glUniform3fv(lightPosLoc, 1, glm::value_ptr(lightPos));
 
-            // Render our object (binds its VAO and draws)
-            o1.Render();
+            for (size_t i = 0; i < objects.size(); ++i)
+            {
+                auto& obj1 = objects[i];
+                for (auto& obj2 : objects) {
+                    if (&obj2 == &obj1) continue;
+                    float dx = obj2.position[0] - obj1.position[0];
+                    float dy = obj2.position[1] - obj1.position[1];
+                    float dz = obj2.position[2] - obj1.position[2];
+                    float distance = sqrt(dx * dx + dy * dy + dz * dz);
+
+                    if (distance > 0) {
+                        std::vector<float> direction = { dx / distance, dy / distance, dz / distance };
+                        distance *= 1000;
+                        double Gforce = (G * obj1.mass * obj2.mass) / (distance * distance);
+
+
+                        float acc1 = Gforce / obj1.mass;
+                        std::vector<float> acc = { direction[0] * acc1, direction[1] * acc1, direction[2] * acc1 };
+                        obj1.accelerate(acc[0], acc[1], acc[2]);
+                    }
+
+                    obj1.velocity *= obj1.collision(obj2);
+
+                }
+
+                obj1.UpdatePos();
+
+                glm::mat4 model = glm::mat4(1.0f);
+                model = glm::translate(model, obj1.position);  // each object gets its own model matrix
+                glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+
+                if (i == 0)
+                    glUniform1i(emissiveLoc, GL_TRUE);
+                else
+                    glUniform1i(emissiveLoc, GL_FALSE);
+
+                obj1.Render();
+            }
 
             glfwSwapBuffers(window);
             glfwPollEvents();
