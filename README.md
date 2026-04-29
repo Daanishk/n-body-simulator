@@ -40,47 +40,6 @@ Built with Visual Studio 2022, C++17, on Windows x64.
 
 The working directory must be the project root so shader files at `Shaders/default.vert` and `Shaders/default.frag` resolve correctly.
 
-## Architecture
-
-The project is layered from low-level GPU resources up to the simulation loop:
-
-```
-main.cpp            Simulation loop, force accumulation, integration, render dispatch
-  ├── object        Per-body state (position, velocity, mass) + owned VAO/VBO
-  ├── Camera        View + projection matrices, keyboard/mouse input
-  ├── Shader        GLSL program loading, compilation, linking
-  └── VAO/VBO/EBO   RAII wrappers around OpenGL buffer objects
-```
-
-Each frame:
-
-1. Pairwise gravitational forces are accumulated for every body.
-2. Velocities and positions are integrated forward (explicit Euler).
-3. A model matrix is built per body and uploaded as a uniform.
-4. The vertex shader transforms object-space vertices into clip space via `projection * view * model`.
-5. The fragment shader computes ambient + diffuse lighting from the sun's world position, except for emissive bodies which output their color directly.
-6. Trails are rendered as a `GL_LINE_STRIP` of accumulated world positions.
-
-## Math Primitives
-
-The same 3D math primitives that power the rendering pipeline show up across sensor processing and robotics:
-
-- **Coordinate frame transforms** — model and view matrices move geometry between object, world, and camera space. The same 4x4 transforms are used to bring sensor measurements from a sensor frame into a world frame.
-- **Vector normalization and dot products** — used in the fragment shader for Lambertian shading (`dot(normal, lightDir)`), and in geometry processing for surface orientation, alignment checks, and projections.
-- **Perspective projection** — `glm::perspective` defines a view frustum the same way a camera intrinsic matrix projects 3D points into a 2D image plane.
-- **Spherical coordinates** — `buildSphere()` generates vertices from `(θ, φ)`, the same parameterization used to describe an angular sweep of beam directions.
-- **Euclidean distance** — pairwise distance computation in the gravity loop is the same primitive underlying nearest-neighbor queries on point sets.
-
-## Limitations & Future Work
-
-Known issues and the upgrades I'd prioritize:
-
-- **Physics is framerate-coupled.** Position and velocity updates use hardcoded scalars instead of a real `dt`, so simulation speed depends on render rate. A fixed-timestep accumulator would make this deterministic.
-- **Explicit Euler integrator is unstable for orbits.** Energy drifts over time and orbits decay or escape. Velocity Verlet or RK4 would be a meaningful upgrade.
-- **Each body owns its own copy of an identical sphere mesh.** Switching to instanced rendering (`glDrawArraysInstanced`) with a single shared mesh and per-instance model matrices would scale to many more bodies.
-- **O(N²) force computation.** Fine for a handful of bodies, but a Barnes-Hut octree would bring this to O(N log N) and make hundreds of bodies feasible.
-- **Vertex normals are computed as `normalize(position)`.** This is a sphere-specific shortcut that breaks for arbitrary meshes — proper per-vertex normals should be precomputed and passed as a separate attribute.
-
 ## Tech Stack
 
 C++17 · OpenGL 3.3 Core · GLSL · GLFW · GLAD · GLM
