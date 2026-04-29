@@ -225,18 +225,21 @@ int main()
 
         while (!glfwWindowShouldClose(window))
         {
+            // Clear the framebuffer and depth buffer 
             glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             shaderProgram.Activate();
             glm::vec3 sunColor = objects[0].color; 
             glUniform3fv(lightColorLoc, 1, glm::value_ptr(sunColor));
 
+            //Update camera input, read keyboard and mouse state to recompute view matrix
             camera.Inputs(window);
             camera.Matrix(45.0f, 0.1f, 10000.f, shaderProgram, "camMatrix");
 
             glm::vec3 lightPos = objects[0].position;
             glUniform3fv(lightPosLoc, 1, glm::value_ptr(lightPos));
 
+            //Compute pairwise gravitational force against every other body
             for (size_t i = 0; i < objects.size(); ++i)
             {
                 auto& obj1 = objects[i];
@@ -265,6 +268,7 @@ int main()
                 obj1.UpdatePos();
                 obj1.addTrailPoint();
 
+                //Build a model matrix for each body to translate sphere into world position
                 glm::mat4 model = glm::mat4(1.0f);
                 model = glm::translate(model, obj1.position);  // each object gets its own model matrix
                 glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
@@ -322,6 +326,7 @@ int main()
             glDisable(GL_BLEND);
             // --------------------------------------------------
 
+            //Finally swapBuffers to push the rendered frame to the screen.
             glfwSwapBuffers(window);
             glfwPollEvents();
         }
