@@ -3,4 +3,4 @@
 
 ## Demo Video
 
-[![Watch the demo]](https://youtu.be/Yio0VDJi7WM)
+[![Watch the demo](assets/thumbnail.png)](https://youtu.be/Yio0VDJi7WM)
