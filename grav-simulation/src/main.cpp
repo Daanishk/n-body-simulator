@@ -37,6 +37,10 @@ public:
     glm::vec3 color = { 1.0f, 0.0f, 0.0f };
     glm::vec3 velocity = glm::vec3(0, 0, 0);
 
+    // Trail Data
+    std::vector<glm::vec3> trail;
+    //static constexpr int MAX_TRAIL_POINTS = 2000;
+
     // Each object owns its VAO & VBO
     VAO vao;
     VBO vbo;  
@@ -98,6 +102,14 @@ public:
             return -0.2f;
         }
         return 1.0f;
+    }
+
+    void addTrailPoint()
+    {
+        trail.push_back(position);
+        //if (trail.size() > MAX_TRAIL_POINTS) {
+        //    trail.erase(trail.begin());
+        //}
     }
 
 private:
@@ -176,20 +188,40 @@ int main()
     GLint emissiveLoc = glGetUniformLocation(shaderProgram.ID, "isEmissive");
 
     std::vector<object> objects;
-    objects.reserve(5);
+    objects.reserve(4);
 
-    //SUN
-    objects.emplace_back(10.0f, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.95f, 0.8f), 3e10);
+    //SUN 1
+    objects.emplace_back(20.0f, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.95f, 0.8f), 3e10);
+    //////SUN 2
+    //objects.emplace_back(20.0f, glm::vec3(300, 300.0f, 0.0f), glm::vec3(-20.0f, -5.0f, 0.0f), glm::vec3(1.0f, 0.95f, 0.8f), 10e10);
 
     //Planet 1 & 2
-    objects.emplace_back(3.0f, glm::vec3( 100.7f, 0.0f, 0.0f), glm::vec3(-9.0f, -9.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 2e9); 
-    objects.emplace_back(3.0f, glm::vec3( -100.7f, 0.0f, 0.0f), glm::vec3(9.0f, 9.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), 2e9); 
-    objects.emplace_back(3.0f, glm::vec3(0.7f, 100.0f, 0.0f), glm::vec3(9.0f, -9.0f, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f), 2e9);
-    objects.emplace_back(3.0f, glm::vec3(-0.7f, -100.0f, 0.0f), glm::vec3(-9.0f, 9.0f, 0.0f), glm::vec3(0.0f, 1.0f, 1.0f), 2e9); 
+    objects.emplace_back(8.0f, glm::vec3( 100.0, 0.0, 0.0f), glm::vec3(0.0f, 17.32f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), 2e9);
+    objects.emplace_back(8.0f, glm::vec3( 200.7f, 0.0f, 0.0f), glm::vec3(0.0f, 12.25f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f), 2e9);
+    objects.emplace_back(8.0f, glm::vec3( 300.f, 0.0f, 0.0f), glm::vec3(0.0f, 10.0f, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f), 2e9);
+    //objects.emplace_back(8.0f, glm::vec3( 400.7f, 0.0f, 0.0f), glm::vec3(9.0f, 9.0f, 0.0f), glm::vec3(0.0f, 1.0f, 1.0f), 2e9); 
 
     glEnable(GL_DEPTH_TEST);
 
     Camera camera(width, height, glm::vec3(0.0f, 0.0f, 100.0f)); 
+
+    // -------- Trail VAO / VBO setup --------
+    GLuint trailVAO, trailVBO;
+    glGenVertexArrays(1, &trailVAO);
+    glGenBuffers(1, &trailVBO);
+
+    glBindVertexArray(trailVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, trailVBO);
+
+    // layout: vec3 position, vec3 color = 6 floats
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+
+    glBindVertexArray(0);
+    // ---------------------------------------
 
         while (!glfwWindowShouldClose(window))
         {
@@ -231,18 +263,64 @@ int main()
                 }
 
                 obj1.UpdatePos();
+                obj1.addTrailPoint();
 
                 glm::mat4 model = glm::mat4(1.0f);
                 model = glm::translate(model, obj1.position);  // each object gets its own model matrix
                 glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
 
-                if (i == 0)
+                if ((i == 0) /*|| (i == 1)*/)
                     glUniform1i(emissiveLoc, GL_TRUE);
                 else
                     glUniform1i(emissiveLoc, GL_FALSE);
 
                 obj1.Render();
             }
+
+            // -------- Render trails (for planets only) --------
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            glBindVertexArray(trailVAO);
+
+            for (size_t i = 0; i < objects.size(); ++i)
+            {
+                auto& obj = objects[i];
+                if (obj.trail.size() < 2) continue;
+
+                std::vector<float> trailVerts;
+                trailVerts.reserve(obj.trail.size() * 6);
+
+                for (const auto& p : obj.trail)
+                {
+                    // position
+                    trailVerts.push_back(p.x);
+                    trailVerts.push_back(p.y);
+                    trailVerts.push_back(p.z);
+                    // white color
+                    trailVerts.push_back(1.0f);
+                    trailVerts.push_back(1.0f);
+                    trailVerts.push_back(1.0f);
+                }
+
+                glBindBuffer(GL_ARRAY_BUFFER, trailVBO);
+                glBufferData(GL_ARRAY_BUFFER,
+                    trailVerts.size() * sizeof(float),
+                    trailVerts.data(),
+                    GL_DYNAMIC_DRAW);
+
+                // Identity model for trails, positions already in world space
+                glm::mat4 trailModel = glm::mat4(1.0f);
+                glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(trailModel));
+
+                glUniform1i(emissiveLoc, GL_TRUE);
+
+                glDrawArrays(GL_LINE_STRIP, 0, static_cast<GLint>(obj.trail.size()));
+            }
+
+            glBindVertexArray(0);
+            glDisable(GL_BLEND);
+            // --------------------------------------------------
 
             glfwSwapBuffers(window);
             glfwPollEvents();
